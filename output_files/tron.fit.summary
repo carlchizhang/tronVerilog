@@ -1,0 +1,20 @@
+Fitter Status : Successful - Thu Oct 06 22:25:16 2016
+Quartus Prime Version : 16.0.0 Build 211 04/27/2016 SJ Lite Edition
+Revision Name : tron
+Top-level Entity Name : tron
+Family : Cyclone V
+Device : 5CSEMA5F31C6
+Timing Models : Final
+Logic utilization (in ALMs) : 801 / 32,070 ( 2 % )
+Total registers : 346
+Total pins : 90 / 457 ( 20 % )
+Total virtual pins : 0
+Total block memory bits : 96,512 / 4,065,280 ( 2 % )
+Total RAM Blocks : 13 / 397 ( 3 % )
+Total DSP Blocks : 12 / 87 ( 14 % )
+Total HSSI RX PCSs : 0
+Total HSSI PMA RX Deserializers : 0
+Total HSSI TX PCSs : 0
+Total HSSI PMA TX Serializers : 0
+Total PLLs : 1 / 6 ( 17 % )
+Total DLLs : 0 / 4 ( 0 % )

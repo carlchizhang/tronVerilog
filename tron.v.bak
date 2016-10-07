@@ -1,0 +1,342 @@
+module lab7p3
+	(
+		CLOCK_50,						//	On Board 50 MHz
+		// Your inputs and outputs here
+        KEY,
+        SW,
+		// The ports below are for the VGA output.  Do not change.
+		VGA_CLK,   						//	VGA Clock
+		VGA_HS,							//	VGA H_SYNC
+		VGA_VS,							//	VGA V_SYNC
+		VGA_BLANK,						//	VGA BLANK
+		VGA_SYNC,						//	VGA SYNC
+		VGA_R,   						//	VGA Red[9:0]
+		VGA_G,	 						//	VGA Green[9:0]
+		VGA_B   						//	VGA Blue[9:0]
+	);
+
+	input			CLOCK_50;				//	50 MHz
+	input   [9:0]   SW;
+	input   [3:0]   KEY;
+
+	// Declare your inputs and outputs here
+	// Do not change the following outputs
+	output			VGA_CLK;   				//	VGA Clock
+	output			VGA_HS;					//	VGA H_SYNC
+	output			VGA_VS;					//	VGA V_SYNC
+	output			VGA_BLANK;				//	VGA BLANK
+	output			VGA_SYNC;				//	VGA SYNC
+	output	[9:0]	VGA_R;   				//	VGA Red[9:0]
+	output	[9:0]	VGA_G;	 				//	VGA Green[9:0]
+	output	[9:0]	VGA_B;   				//	VGA Blue[9:0]
+	
+	wire resetn;
+	assign resetn = KEY[0];
+	
+	// Create the colour, x, y and writeEn wires that are inputs to the controller.
+
+	wire [2:0] colour;
+	wire [7:0] x;
+	wire [6:0] y;
+	wire writeEn;
+
+	// Create an Instance of a VGA controller - there can be only one!
+	// Define the number of colours as well as the initial background
+	// image file (.MIF) for the controller.
+	vga_adapter VGA(
+			.resetn(resetn),
+			.clock(CLOCK_50),
+			.colour(colour),
+			.x(x),
+			.y(y),
+			.plot(writeEn),
+			/* Signals for the DAC to drive the monitor. */
+			.VGA_R(VGA_R),
+			.VGA_G(VGA_G),
+			.VGA_B(VGA_B),
+			.VGA_HS(VGA_HS),
+			.VGA_VS(VGA_VS),
+			.VGA_BLANK(VGA_BLANK),
+			.VGA_SYNC(VGA_SYNC),
+			.VGA_CLK(VGA_CLK));
+		defparam VGA.RESOLUTION = "160x120";
+		defparam VGA.MONOCHROME = "FALSE";
+		defparam VGA.BITS_PER_COLOUR_CHANNEL = 1;
+		defparam VGA.BACKGROUND_IMAGE = "black.mif";
+			
+	// Put your code here. Your code should produce signals x,y,colour and writeEn
+	// for the VGA controller, in addition to any other functionality your design may require.
+    wire loadX,loadY,load_colour,en_counter,load_black,vertical,horizontal,en_delay_counter,reset_delay;
+	 wire [3:0] cnt;
+	 wire [3:0] delay_cnt;
+    // Instanciate datapath
+	animation_datapath Data_path(CLOCK_50,resetn,cnt,delay_cnt,loadX,loadY,load_colour,load_black,vertical,horizontal,
+	en_counter,en_delay_counter,SW[9:7],x,y,colour,reset_delay);
+    // Instanciate FSM control
+	animation_controller Control_path(CLOCK_50,resetn,x,y,cnt,delay_cnt,loadX,loadY,load_colour,load_black,writeEn
+	,en_counter,en_delay_counter,vertical,horizontal,reset_delay);
+endmodule
+
+module animation_datapath(clock,resetn,cnt,delay_cnt,loadX,loadY,load_colour,load_black,vertical,horizontal,
+en_counter,en_delay_counter,colourInput,xValue,yValue,colourValue,reset_delay);
+	input clock,resetn,loadX,loadY,load_colour,en_counter,en_delay_counter,load_black,vertical,horizontal,reset_delay;	
+	input [2:0] colourInput;
+	output [7:0] xValue;
+	output [6:0] yValue;
+	output [2:0] colourValue;
+	output [3:0] cnt; 
+	output [3:0] delay_cnt;
+	wire [7:0] c1;
+	wire [6:0] c2;
+	wire [2:0] c3;
+	wire c4;
+	register8bit Xcounter(clock,resetn,loadX,horizontal,c1);
+	register7bit Ycounter(clock,resetn,loadY,vertical,c2);
+	register3bit R_Colour(clock,resetn,load_colour,colourInput,c3);
+	counter counter_no_delay (clock,resetn,en_counter,cnt);
+	counter counter_with_delay(clock,reset_delay,c4,delay_cnt);
+	delay_counter delayCounter(clock,resetn,en_delay_counter,c4);
+	assign colourValue = load_black? 3'b0:c3;
+	assign xValue = c1[7:0] + {6'b0,cnt[1:0]};
+	assign yValue = c2[6:0] + {5'b0,cnt[3:2]};
+endmodule 
+
+module animation_controller(clock,resetn,X,Y,cnt,delay_cnt,loadX,loadY,load_colour,load_black,plot
+,en_counter,en_delay_counter,vertical,horizontal,reset_delay);
+	input [7:0] X;
+	input [6:0] Y;
+	input clock,resetn;
+	input [3:0]cnt;
+	input [3:0]delay_cnt;
+	output reg loadX,loadY,load_colour,plot,en_counter,load_black,en_delay_counter,vertical,horizontal,reset_delay;
+	parameter [3:0] RESET_S = 4'b0000,LOAD_S = 4'b0001 ,DRAW_S = 4'b0010 , DONE_S = 4'b0011,	ERASE_S = 4'b0100,UPDATE_S = 4'b0101;
+	parameter DOWN = 1'b1 , UP = 1'b0 , LEFT = 1'b0 , RIGHT = 1'b1;
+	reg [3:0] PresentState , NextState;
+	always @ (*)
+	begin: state_table
+		case(PresentState)
+		RESET_S:
+			NextState = LOAD_S;
+		LOAD_S :
+			NextState = DRAW_S;
+		DRAW_S:
+			if(cnt < 15)
+				NextState = DRAW_S;
+			else 
+				NextState = DONE_S;
+		DONE_S:
+			if(delay_cnt < 15)
+				NextState = DONE_S;
+			else 
+				NextState = ERASE_S;
+		ERASE_S:
+			if(cnt < 15)
+				NextState = ERASE_S;
+			else 
+				NextState = UPDATE_S;
+		UPDATE_S:
+			NextState = LOAD_S;
+		endcase 
+	end
+	
+	always@(*)
+	begin: output_logic
+	case(PresentState)
+		RESET_S:
+			begin 
+			loadX = 0;
+			loadY = 0;
+			load_colour = 0;
+			load_black = 0;
+			en_counter = 0;
+			en_delay_counter = 0;
+			plot = 0;
+			horizontal = RIGHT;
+			vertical = DOWN;
+			reset_delay = 0;
+			end
+		LOAD_S:
+			begin 
+			loadX = 1;
+			loadY = 1;
+			load_colour = 1;
+			load_black = 0;
+			en_counter = 0;
+			en_delay_counter = 0;
+			plot = 0;
+			end
+		DRAW_S:
+			begin 
+			loadX = 0;
+			loadY = 0;
+			load_colour = 0;
+			load_black = 0;
+			en_counter = 1;
+			en_delay_counter = 0;
+			plot = 1;
+			end
+		DONE_S:
+			begin 
+			loadX = 0;
+			loadY = 0;
+			load_colour = 0;
+			load_black = 0;
+			en_counter = 0;
+			en_delay_counter = 1;
+			reset_delay = 1;
+			plot = 0;
+			end
+		ERASE_S:
+			begin 
+			loadX = 0;
+			loadY = 0;
+			load_colour = 0;
+			load_black = 1;
+			en_counter = 1;
+			en_delay_counter = 0;
+			reset_delay = 0;
+			plot = 1;
+			end
+		UPDATE_S:
+			begin 
+			loadX = 0;
+			loadY = 0;
+			load_colour = 0;
+			load_black = 0;
+			en_counter = 0;
+			en_delay_counter = 0;
+			plot = 0;
+			if(X == 0 )
+				horizontal = RIGHT;
+			else if (X == 156)
+				horizontal = LEFT;
+			if(Y == 0)
+				vertical = DOWN;
+			else if(Y == 116)
+				vertical = UP;
+			end
+		default:
+			begin 
+			loadX = 0;
+			loadY = 0;
+			load_colour = 0;
+			load_black = 0;
+			en_counter = 0;
+			plot = 0;
+			horizontal = RIGHT;
+			vertical = DOWN;
+			en_delay_counter = 0;
+			reset_delay = 0;
+			end
+	endcase 
+	end
+	always @ (posedge clock)
+	begin:state_FFs
+		if(resetn == 1'b0)
+			PresentState <= RESET_S;
+		else 
+			PresentState <= NextState;
+	end
+endmodule 
+
+
+module register8bit(clock,resetn,load,direction,Q);
+	input clock;
+	input resetn;
+	input load;
+	input direction;
+	output reg [7:0] Q;
+	always@(posedge clock)
+		if(resetn == 1'b0)
+			Q <= 8'b0;
+		else if (load)
+		begin 
+			if(direction == 1'b1)
+				Q <= Q + 1;
+			else 
+				Q <= Q - 1;
+		end
+endmodule 
+
+module register7bit(clock,resetn,load,direction,Q);
+	input clock;
+	input resetn;
+	input load;
+	input direction ;
+	output reg [6:0] Q;
+	always@(posedge clock)
+		if(resetn == 1'b0)
+			Q <= 7'b0;
+		else if (load)
+		begin 
+			if(direction == 1'b1)
+				Q <= Q + 1;
+			else 
+				Q <= Q - 1;
+		end
+endmodule 
+
+module register3bit(clock,resetn,load,D,Q);
+	input clock;
+	input resetn;
+	input load;
+	input [2:0] D;
+	output reg [2:0] Q;
+	always@(posedge clock)
+		if(resetn == 1'b0)
+			Q <= 3'b0;
+		else if (load)
+			Q <= D;
+endmodule 
+
+module register1bit(clock,resetn,load,D,Q);
+	input clock;
+	input resetn;
+	input load;
+	input D;
+	output reg Q;
+	always@(posedge clock)
+		if(resetn == 1'b0)
+			Q <= 1'b0;
+		else if (load)
+			Q <= D;
+endmodule 
+
+
+module counter (clock,resetn,enable,Q);
+	input clock;
+	input resetn;
+	input enable;
+	output reg [3:0] Q;
+	always @(posedge clock)
+		if(resetn == 1'b0)
+			Q <= 4'b0;
+		else if(enable == 1'b1)
+		begin 
+		if(Q == 4'b1111)
+			Q <= 4'b0;
+		else 
+			Q <= Q + 1'b1;
+		end
+endmodule 
+
+module delay_counter(clock,resetn,load,Enable);
+	input clock;
+	input resetn;
+	input load;
+	reg [19:0] Q;
+	output Enable;
+	always @(posedge clock)
+	begin 
+		if(resetn == 1'b0)
+			Q <= 4;//8333333;
+		else if(load == 1)
+		begin
+			if(Q == 0)
+				Q <= 4;//8333333;
+			else 
+				Q <= Q - 1;
+		end
+	end
+	assign Enable = (Q == 0)?1:0;
+endmodule 

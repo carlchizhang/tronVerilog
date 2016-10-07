@@ -1,0 +1,2 @@
+Warning (10268): Verilog HDL information at tron.v(735): always construct contains both blocking and non-blocking assignments File: D:/Drive/ECE/Year 2/ECE241/project/tron.v Line: 735
+Warning (10268): Verilog HDL information at tron.v(798): always construct contains both blocking and non-blocking assignments File: D:/Drive/ECE/Year 2/ECE241/project/tron.v Line: 798
